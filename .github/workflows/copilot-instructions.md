@@ -78,7 +78,7 @@ The static server command is for local browser smoke testing; stop it when finis
 .
 |-- .github/
 |   `-- workflows/
-|       |-- ci-cd.yml
+|       |-- ci.yml
 |       `-- copilot-instructions.md
 |-- docs/
 |   `-- j1979-pid-mvp-training-requirements.md
