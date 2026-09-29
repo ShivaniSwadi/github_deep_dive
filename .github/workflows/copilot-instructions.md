@@ -16,7 +16,7 @@ Keep changes aligned with the requirements in `docs/j1979-pid-mvp-training-requi
 - Node built-in `node:test` and `node:assert/strict` for unit tests.
 - Python 3 may be used as a local static file server; it is not an application dependency.
 - AWS CloudFormation provisions a private S3 static origin and CloudFront distribution with Origin Access Control (OAC).
-- GitHub Actions (`.github/workflows/ci.yml`) runs syntax checks and unit tests only (CI). Deployment (CD) is deferred. The workflow uses `actions/checkout@v4`, `actions/setup-node@v4`, and `actions/upload-artifact@v4`.
+- GitHub Actions (`.github/workflows/ci.yml`) runs syntax checks, lint, review checks, the stage gate, and unit tests only (CI). Deployment (CD) is deferred. The workflow uses `actions/checkout@v5`, `actions/setup-node@v5`, and `actions/upload-artifact@v6`.
 
 ## Architecture
 
@@ -70,6 +70,8 @@ node --check test/decoder.test.js
 node --check tools/ut-csv-reporter.js
 node --check tools/review-check.js
 node --check tools/stage-gate.js
+node --check tools/lint.js
+npm run lint
 npm run review
 npm run gate
 python -m http.server 8000
@@ -90,6 +92,12 @@ Work flows in this order: requirements, SWDD, UT design (`docs/ut.md`, `docs/ut-
 ```text
 .
 |-- .github/
+|   |-- agents/
+|   |   |-- lint.agent.md
+|   |   `-- self review agent.agent.md
+|   |-- skills/
+|   |   |-- self-review/SKILL.md
+|   |   `-- ut-requirements-review/SKILL.md
 |   `-- workflows/
 |       |-- ci.yml
 |       `-- copilot-instructions.md
@@ -106,6 +114,7 @@ Work flows in this order: requirements, SWDD, UT design (`docs/ut.md`, `docs/ut-
 |-- test/
 |   `-- decoder.test.js
 |-- tools/
+|   |-- lint.js
 |   |-- review-check.js
 |   |-- stage-gate.js
 |   `-- ut-csv-reporter.js

@@ -31,7 +31,7 @@ Open `http://localhost:8000` in a browser. Stop the static server with Ctrl+C.
 
 ## Continuous integration
 
-The GitHub Actions workflow `.github/workflows/ci.yml` (job `verify`) runs on pull requests, pushes to `main`, and manual dispatch. It sets up Node.js 20, runs `node --check` on the six JavaScript files, runs the review checks (`npm run review`) and the stage gate (`npm run gate`), runs `npm test`, and uploads `reports/ut-report.csv` as the `ut-report` artifact. There is no deployment (CD) step.
+The GitHub Actions workflow `.github/workflows/ci.yml` (job `verify`) runs on pull requests, pushes to `main`, and manual dispatch. It sets up Node.js 20, runs `node --check` on the seven JavaScript files, runs the linter (`npm run lint`), the review checks (`npm run review`) and the stage gate (`npm run gate`), runs `npm test`, and uploads `reports/ut-report.csv` as the `ut-report` artifact. There is no deployment (CD) step.
 
 AWS deployment (OIDC role, CloudFormation deploy, S3 upload, CloudFront invalidation) is designed in `docs/swdd.md` sections 3.4 and 3.5 but is deferred. Before enabling it, use a dedicated AWS training account, restrict the OIDC role trust to this repository's `main` branch, and grant least-privilege permissions.
 

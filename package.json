@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "node tools/lint.js",
     "review": "node tools/review-check.js",
     "gate": "node tools/stage-gate.js verify",
     "freeze": "node tools/stage-gate.js freeze",
