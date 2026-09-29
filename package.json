@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "review": "node tools/review-check.js",
+    "gate": "node tools/stage-gate.js verify",
+    "freeze": "node tools/stage-gate.js freeze",
     "test": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/ut-csv-reporter.js --test-reporter-destination=stdout test/decoder.test.js"
   }
 }

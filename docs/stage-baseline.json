@@ -1,0 +1,43 @@
+{
+  "stages": {
+    "requirements": {
+      "hash": "a8411782d9555f29d4c18280bed7de55dea88189b98e511fc223fbdab48219c0",
+      "basedOn": {},
+      "reviewedBy": "GitHub Copilot (pending human sign-off)",
+      "reviewedAt": "2026-09-29"
+    },
+    "swdd": {
+      "hash": "85c7325582479f1d97b550af9968a5737e9e27cef0ce73d842eda50e0dd0ff6c",
+      "basedOn": {
+        "requirements": "a8411782d9555f29d4c18280bed7de55dea88189b98e511fc223fbdab48219c0"
+      },
+      "reviewedBy": "GitHub Copilot (pending human sign-off)",
+      "reviewedAt": "2026-09-29"
+    },
+    "ut-design": {
+      "hash": "0836bea82929677a4691da730ca7b55ed8a2fdb1655cd9050c5e76d5667cb98e",
+      "basedOn": {
+        "swdd": "85c7325582479f1d97b550af9968a5737e9e27cef0ce73d842eda50e0dd0ff6c"
+      },
+      "reviewedBy": "GitHub Copilot (pending human sign-off)",
+      "reviewedAt": "2026-09-29"
+    },
+    "tests": {
+      "hash": "a5f2cb0f696650c1d6f11641a4351c7269308a8bf6be81441e978456df9fd44b",
+      "basedOn": {
+        "ut-design": "0836bea82929677a4691da730ca7b55ed8a2fdb1655cd9050c5e76d5667cb98e"
+      },
+      "reviewedBy": "GitHub Copilot (pending human sign-off)",
+      "reviewedAt": "2026-09-29"
+    },
+    "code": {
+      "hash": "3bd672d75723888b1b0edf34d1e4d950b2d17d8a54c817219bf96bb5e1dde1d3",
+      "basedOn": {
+        "swdd": "85c7325582479f1d97b550af9968a5737e9e27cef0ce73d842eda50e0dd0ff6c",
+        "ut-design": "0836bea82929677a4691da730ca7b55ed8a2fdb1655cd9050c5e76d5667cb98e"
+      },
+      "reviewedBy": "GitHub Copilot (pending human sign-off)",
+      "reviewedAt": "2026-09-29"
+    }
+  }
+}

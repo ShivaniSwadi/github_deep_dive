@@ -83,7 +83,7 @@ flowchart TD
   test/
     decoder.test.js
   infra/
-    site.yaml
+    site.yaml         (deferred, not yet created)
   .github/
     workflows/
       ci.yml
@@ -251,9 +251,9 @@ Every transition clears the previous state before rendering the new one, so a st
 - Visible focus indicator on all interactive controls; layout works from narrow mobile widths to desktop.
 - No external fonts, scripts, analytics, or network calls.
 
-### 3.4 Infrastructure (`infra/site.yaml`)
+### 3.4 Infrastructure (CloudFormation template, deferred)
 
-Status: design retained; deployment is deferred and not part of the current CI-only pipeline.
+Status: design retained; the template file is not yet in the repository and deployment is deferred, so it is not part of the current CI-only pipeline.
 
 CloudFormation template defining:
 
@@ -277,7 +277,9 @@ flowchart LR
 
 | Job | Trigger | Steps |
 |---|---|---|
-| `verify` | Pull request, push to `main` | Checkout; set up Node.js 20; `node --check` on `src/decoder.js`, `src/app.js`, `test/decoder.test.js`, `tools/ut-csv-reporter.js`; `npm test`; upload `reports/ut-report.csv` as an artifact (also when tests fail) |
+| `verify` | Pull request, push to `main` | Checkout; set up Node.js 20; `node --check` on `src/decoder.js`, `src/app.js`, `test/decoder.test.js`, `tools/ut-csv-reporter.js`, `tools/review-check.js`, `tools/stage-gate.js`; `npm run review`; `npm run gate`; `npm test`; upload `reports/ut-report.csv` as an artifact (also when tests fail) |
+
+Stage freeze: `tools/review-check.js` automates the mechanical review checks per stage (requirements, SWDD, UT design, tests, code): unique requirement IDs, requirement-to-design and requirement-to-test traceability, agreement of `docs/ut.md`, the CSV and the test code, error messages equal to section 5, and referenced files existing. `tools/stage-gate.js` stores a SHA-256 hash of each stage in `docs/stage-baseline.json` with the reviewer, the date, and the hashes of the upstream stages it was reviewed against. The stage order is requirements, SWDD, UT design, tests, code (code also depends on the SWDD and the UT design). `verify` fails when a stage changed after it was frozen, or when an upstream stage changed and the stage was not re-frozen. `freeze` refuses when the stage's review checks fail, when an upstream stage is not frozen, or when the upstream did not change (unless `--amend` records a reason), so a frozen stage stays frozen until a requirement is added or modified. The judgment-based review skills are not run in CI.
 
 Security settings: workflow permissions `contents: read` only; no secrets, no cloud credentials.
 

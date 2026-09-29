@@ -11,7 +11,7 @@ This document defines the unit tests for RPM Lens: what is tested, how, with whi
 | Item | Decision |
 |---|---|
 | Unit under test | `src/decoder.js` (pure functional core): `decodeRpmResponse`, and `calculateRpm` / `formatRpm` if exported |
-| Not unit tested | `src/app.js`, `index.html`, `src/styles.css`, `infra/site.yaml`, CI/CD workflow (covered by the manual checks in swdd.md Section 6.2) |
+| Not unit tested | `src/app.js`, `index.html`, `src/styles.css`, the deferred infrastructure template, CI/CD workflow (covered by the manual checks in swdd.md Section 6.2) |
 | Test level | Unit only; no integration, browser, or network tests |
 
 `app.js` is excluded because a DOM test would need a browser or a DOM library, which conflicts with the no-runtime-dependency constraint (swdd.md 1.4). The logic that matters (validation and decoding) lives in the decoder, which is why the design keeps it DOM-free (QR-06).
