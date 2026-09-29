@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RPM Lens - J1979 engine speed decoder</title>
+    <meta name="description" content="Educational decoder for a simulated SAE J1979 Mode 01 PID 0C engine-speed response.">
+    <link rel="stylesheet" href="src/styles.css">
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <h1>RPM Lens</h1>
+      <p class="lead">Decode a simulated Mode 01 PID 0C (engine speed) response.</p>
+
+      <form id="decode-form" class="card" novalidate>
+        <label for="response-input">Mode 01 PID 0C response: four hex bytes</label>
+        <p id="input-hint" class="hint">Service, PID, A and B separated by spaces, for example <code>41 0C 1A F8</code>.</p>
+        <div class="controls">
+          <input
+            id="response-input"
+            name="response"
+            type="text"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            placeholder="41 0C 1A F8"
+            aria-describedby="input-hint result"
+          >
+          <button id="decode-button" type="submit">Decode</button>
+        </div>
+        <div id="result" class="result" role="status" aria-live="polite" data-state="idle"></div>
+      </form>
+
+      <p class="notice">
+        Educational use only. This tool works on manually entered, synthetic data in your browser,
+        does not connect to a vehicle, and is not a diagnostic or safety tool.
+      </p>
+    </main>
+  </body>
+</html>
