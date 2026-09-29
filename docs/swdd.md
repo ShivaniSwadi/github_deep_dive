@@ -11,8 +11,8 @@ This document describes the detailed design of RPM Lens, a browser-only tool tha
 ### 1.2 Scope
 
 - One single-page web application with one decoder (Mode 01, PID 0C).
-- Manual entry of four hexadecimal bytes (service, PID, A, B).
-- Static hosting on AWS (private S3 origin behind CloudFront with OAC), deployed by GitHub Actions using OIDC.
+- Manual entry of four hexadecimal bytes (service, PID, A, B), either space-separated or as one compact 8-digit token such as `410C1AF8` (FR-11).
+- Automated verification (CI) by GitHub Actions. Static hosting on AWS (private S3 origin behind CloudFront with OAC) deployed by GitHub Actions using OIDC is designed in 2.2, 3.4 and 3.5 but is deferred: only the CI part is implemented.
 - Out of scope: vehicle/adapter connectivity, other PIDs or protocols, persistence, accounts, analytics, and any diagnostic claim.
 
 ### 1.3 Definitions
@@ -86,18 +86,23 @@ flowchart TD
     site.yaml
   .github/
     workflows/
-      ci-cd.yml
+      ci.yml
+  tools/
+    ut-csv-reporter.js
+  reports/            (generated, not tracked)
   package.json
   README.md
   docs/
     swdd.md
+    ut.md
+    ut-testcases.csv
 ```
 
 ## 3. Component design
 
 ### 3.1 Decoder module (`src/decoder.js`)
 
-**Responsibility:** convert a raw input string into a structured success or error result. Covers FR-02 to FR-07, QR-01, QR-06.
+**Responsibility:** convert a raw input string into a structured success or error result. Covers FR-02 to FR-07, FR-11, QR-01, QR-06.
 
 #### 3.1.1 Constants
 
@@ -106,7 +111,8 @@ flowchart TD
 | `EXPECTED_SERVICE` | `0x41` | Positive response to Mode 01 |
 | `EXPECTED_PID` | `0x0C` | Engine speed |
 | `EXPECTED_BYTE_COUNT` | `4` | Service, PID, A, B |
-| `BYTE_PATTERN` | `/^[0-9A-F]{2}$/` | Applied to case-normalized tokens |
+| `COMPACT_LENGTH` | `EXPECTED_BYTE_COUNT * 2` (8) | Character length of the compact single-token form (FR-11) |
+| `BYTE_PATTERN` | `/^[0-9A-Fa-f]{2}$/` | Case-insensitive, applied to the raw tokens before any upper-casing, so case-mapping expansions such as U+FB00 (`ﬀ`) cannot become valid bytes |
 
 #### 3.1.2 Data contracts
 
@@ -153,11 +159,14 @@ flowchart TD
     A[input] --> B[trim and split on whitespace]
     B --> C{empty?}
     C -- yes --> E1[EMPTY]
-    C -- no --> D{token count == 4?}
+    C -- no --> B2{exactly one token of 8 characters?}
+    B2 -- yes --> B3[split token into four 2-character bytes]
+    B2 -- no --> D
+    B3 --> D{byte count == 4?}
     D -- no --> E2[WRONG_BYTE_COUNT]
-    D -- yes --> F{all tokens match 2 hex chars?}
+    D -- yes --> F{all bytes match 2 hex chars?}
     F -- no --> E3[INVALID_BYTE]
-    F -- yes --> G[uppercase and parse to numbers]
+    F -- yes --> G[parse to numbers; upper-case for normalized text]
     G --> H{service == 0x41?}
     H -- no --> E4[WRONG_SERVICE]
     H -- yes --> I{pid == 0x0C?}
@@ -169,7 +178,9 @@ flowchart TD
 Notes:
 
 - Splitting uses `/\s+/` after `trim()`, so leading/trailing/multiple spaces are tolerated consistently.
-- A single-token string such as `410C1AF8` yields `WRONG_BYTE_COUNT`; input is not silently re-tokenized.
+- Compact form (FR-11): only when the trimmed input is exactly one token of exactly 8 characters (`COMPACT_LENGTH`) is that token split into four consecutive 2-character bytes. The 8 characters are not checked for hex validity at this step, so `410C1AG8` reaches the syntax check and yields `INVALID_BYTE`. After the split, the normal count, syntax, service, PID, and decode steps apply unchanged, so the compact and spaced forms give identical results and the same `normalized` value (`41 0C 1A F8`).
+- Any other shape is not re-tokenized: a single token that is not 8 characters (for example `410C1A`, `410C1AF800`) and mixed grouping or extra tokens (`410C 1AF8`, `41 0C1AF8`, `410C1AF8 00`) yield `WRONG_BYTE_COUNT`.
+- The byte pattern is tested on the raw token before upper-casing. Upper-casing first could turn a character such as U+FB00 into two ASCII letters and wrongly pass the check.
 - Range: A, B in 0-255 gives 0 to 16,383.75 rpm.
 
 #### 3.1.5 Worked examples
@@ -180,12 +191,20 @@ Notes:
 | `41 0c 1a f8` | ok, normalized `41 0C 1A F8` |
 | `41 0C 00 01` | ok, 0.25, `0.25 rpm` |
 | `41 0C FF FF` | ok, 16383.75, `16,383.75 rpm` |
+| `410C1AF8` | ok, 1726, `1,726 rpm`, normalized `41 0C 1A F8` |
+| `410c1af8` | ok, normalized `41 0C 1A F8` |
 | `` (empty/whitespace) | `EMPTY` |
 | `41 0C F8` | `WRONG_BYTE_COUNT` |
 | `41 0C 1A F8 00` | `WRONG_BYTE_COUNT` |
+| `410C1A`, `410C1AF800` | `WRONG_BYTE_COUNT` |
+| `410C 1AF8`, `41 0C1AF8`, `410C1AF8 00` | `WRONG_BYTE_COUNT` |
 | `41 0C 1G F8` | `INVALID_BYTE` |
+| `410C1AG8` | `INVALID_BYTE` |
+| `41 0C <U+FB00> F8` | `INVALID_BYTE` |
 | `42 0C 1A F8` | `WRONG_SERVICE` |
 | `41 0D 1A F8` | `WRONG_PID` |
+| `420C1AF8` | `WRONG_SERVICE` |
+| `410D1AF8` | `WRONG_PID` |
 
 ### 3.2 UI controller module (`src/app.js`)
 
@@ -226,13 +245,15 @@ Every transition clears the previous state before rendering the new one, so a st
 ### 3.3 Presentation (`index.html`, `src/styles.css`)
 
 - Single responsive page: title, one-line description, labeled input, Decode button, result region, educational-use notice.
-- The label text states the expected format ("Mode 01 PID 0C response: four hex bytes"); the example `41 0C 1A F8` is shown as a placeholder/hint only and is not auto-accepted.
+- The label text states the expected format ("Mode 01 PID 0C response: four hex bytes"); the hint states that spaces are optional and shows both `41 0C 1A F8` and `410C1AF8` as examples (FR-11). The placeholder is a hint only and is not auto-accepted.
 - Script is loaded as `<script type="module" src="src/app.js">`.
 - Status is conveyed by text as well as color; contrast meets WCAG AA (4.5:1 for body text).
 - Visible focus indicator on all interactive controls; layout works from narrow mobile widths to desktop.
 - No external fonts, scripts, analytics, or network calls.
 
 ### 3.4 Infrastructure (`infra/site.yaml`)
+
+Status: design retained; deployment is deferred and not part of the current CI-only pipeline.
 
 CloudFormation template defining:
 
@@ -245,41 +266,29 @@ CloudFormation template defining:
 
 Outputs: bucket name and CloudFront distribution id and domain name (used by the workflow for upload, invalidation, and reporting).
 
-### 3.5 CI/CD (`.github/workflows/ci-cd.yml`)
+### 3.5 CI (`.github/workflows/ci.yml`)
 
 ```mermaid
 flowchart LR
     PR[Pull request] --> V[verify job]
     PUSH[Push to main] --> V
-    V --> D[deploy job, main only]
-    D --> S1[Assume role via OIDC]
-    S1 --> S2[Deploy CloudFormation]
-    S2 --> S3[Sync assets to S3]
-    S3 --> S4[Invalidate CloudFront]
-    S4 --> S5[Report URL]
+    V --> A[Upload ut-report artifact]
 ```
 
 | Job | Trigger | Steps |
 |---|---|---|
-| `verify` | Pull request, push to `main` | Checkout; set up Node.js 20+; syntax check of JS files; `npm test` |
-| `deploy` | Push to `main` or manual dispatch, after `verify` succeeds | Configure AWS credentials via OIDC; `cloudformation deploy`; read stack outputs; `s3 sync` of `index.html` and `src/`; CloudFront invalidation; write CloudFront URL to the job summary |
+| `verify` | Pull request, push to `main` | Checkout; set up Node.js 20; `node --check` on `src/decoder.js`, `src/app.js`, `test/decoder.test.js`, `tools/ut-csv-reporter.js`; `npm test`; upload `reports/ut-report.csv` as an artifact (also when tests fail) |
 
-Security settings:
+Security settings: workflow permissions `contents: read` only; no secrets, no cloud credentials.
 
-- Workflow permissions: `contents: read`, `id-token: write` (deploy job only).
-- Role ARN and region come from repository variables `AWS_ROLE_ARN` and `AWS_REGION`; no long-lived keys.
-- IAM trust policy restricts `aud` to `sts.amazonaws.com` and `sub` to this repository's `main` branch or environment.
-- Role permissions limited to the training stack, its S3 bucket, and CloudFront invalidation.
-- Third-party actions are pinned according to organizational policy.
-
-Rollback: redeploy the last known good commit or revert and redeploy; do not delete the stack as the default recovery.
+Deferred (CD): an AWS deploy job (OIDC role, CloudFormation deploy, `s3 sync`, CloudFront invalidation) is not part of the current pipeline. If added later it needs `id-token: write` on that job only, a trust policy restricted to this repository's `main` branch, and least-privilege role permissions.
 
 ## 4. Requirements traceability
 
 | Requirement | Design element |
 |---|---|
 | FR-01 | 3.2.1 form, input, button; 3.3 label and format text |
-| FR-02 | 3.1.4 case normalization and space splitting |
+| FR-02 | 3.1.4 case-insensitive byte pattern, normalization, and space splitting |
 | FR-03 | 3.1.4 EMPTY, WRONG_BYTE_COUNT, INVALID_BYTE |
 | FR-04 | 3.1.4 WRONG_SERVICE |
 | FR-05 | 3.1.4 WRONG_PID |
@@ -288,14 +297,15 @@ Rollback: redeploy the last known good commit or revert and redeploy; do not del
 | FR-08 | 3.2.2 step 2; 3.2.3 state model |
 | FR-09 | 3.2.1 label, `role="status"`, `aria-live`, `aria-invalid`; 3.3 focus and contrast |
 | FR-10 | 2.2 and 3.3: no network calls; decoding in the browser |
+| FR-11 | 3.1.1 `COMPACT_LENGTH`; 3.1.4 compact split step and notes; 3.1.5 examples; 3.3 hint text |
 | QR-01 | 3.1.4, 6.1 unit tests |
 | QR-02 | 3.2.2 step 5; 3.3 no analytics; 7 |
 | QR-03 | 3.2.1, 3.3, 6.2 |
 | QR-04 | 3.3 standard HTML/CSS/ES modules only; 6.2 |
 | QR-05 | 1.4 no runtime dependencies |
 | QR-06 | 2.1, 2.3, 3.1 |
-| QR-07 | 3.4, 3.5 |
-| QR-08 | 3.4 blocked public access, OAC, bucket policy |
+| QR-07 | 3.5 CI (verification); 3.4 and the deferred CD part of 3.5 (deployment) |
+| QR-08 | 3.4 blocked public access, OAC, bucket policy (deferred with deployment) |
 
 ## 5. Error messages
 
@@ -313,27 +323,19 @@ Messages are plain language, contain no stack traces, and are the only user-visi
 
 ### 6.1 Decoder unit tests (`test/decoder.test.js`)
 
-| # | Case | Expected |
-|---|---|---|
-| 1 | `41 0C 1A F8` | ok, rpm 1726 |
-| 2 | `41 0C 00 01` | ok, rpm 0.25 |
-| 3 | `41 0C FF FF` | ok, rpm 16383.75 |
-| 4 | `41 0c 1a f8` | ok, normalized upper-case |
-| 5 | `  41 0C 1A F8  ` | ok, same as case 1 |
-| 6 | empty and whitespace-only | `EMPTY` |
-| 7 | 3 bytes; 5 bytes | `WRONG_BYTE_COUNT` |
-| 8 | `41 0C 1G F8`; `41 0C 1 F8`; `41 0C 1AF F8` | `INVALID_BYTE` |
-| 9 | `42 0C 1A F8` | `WRONG_SERVICE` |
-| 10 | `41 0D 1A F8` | `WRONG_PID` |
-| 11 | Order check: `42 0D 1A F8` | `WRONG_SERVICE` (service checked before PID) |
-| 12 | `formatRpm` for 1726, 0.25, 1.5 | `1,726 rpm`, `0.25 rpm`, `1.5 rpm` |
-| 13 | Non-string input (`undefined`, `null`) | `EMPTY`, no exception |
+The detailed unit test design, test data, and traceability are in [ut.md](ut.md) and [ut-testcases.csv](ut-testcases.csv). Summary of the design intent:
+
+- Valid vectors: reference, boundaries, lowercase, whitespace, and the compact form (FR-11).
+- Invalid vectors for each error code, including compact-form length, content, service, PID, and mixed grouping.
+- Precedence: empty, then byte count, then syntax, then service, then PID.
+- `formatRpm`, non-string input, result and error contract, purity of the decoder module.
 
 ### 6.2 UI and deployment checks (manual)
 
 | Check | Procedure | Expected |
 |---|---|---|
 | Smoke | Load the deployed URL, decode the example | `1,726 rpm` displayed |
+| Compact input | Enter `410C1AF8` and activate Decode; read the hint text | `1,726 rpm` and accepted response `41 0C 1A F8` displayed; hint says spaces are optional |
 | Error and stale-state | Decode valid input, then invalid input | Error shown; old RPM gone |
 | Keyboard | Tab to input, type, press Enter/activate Decode | Result shown and announced |
 | Accessibility scan | Automated scan if available | No critical violations |
@@ -356,3 +358,5 @@ Messages are plain language, contain no stack traces, and are the only user-visi
 - The service, PID, and formula must be verified against an authorized, current SAE J1979 reference before any production use.
 - Requirement wording for FR-07 is satisfied by `en-US` grouping with up to two fraction digits; a different locale is not required.
 - Extending to other PIDs would require introducing a decoder registry; this is intentionally deferred.
+- Decision (FR-11): number formatting (`formatRpm`, `display`) stays in the decoder module, as designed in 3.1; it is not moved to the UI layer.
+- Open: the whitespace split uses `\s`, which also accepts Unicode spaces such as NBSP. The requirements are silent; this is treated as tolerated behavior until the requester decides otherwise.

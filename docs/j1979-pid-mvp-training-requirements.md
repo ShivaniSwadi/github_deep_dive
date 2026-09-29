@@ -27,7 +27,7 @@ This document defines a small, end-to-end software MVP and a 16-hour instructor-
 - One single-page web application.
 - One decoder: Mode 01 PID 0C engine speed.
 - Manual entry of exactly four response bytes: service, PID, A, and B.
-- Input accepts hexadecimal bytes separated by spaces; letter case is ignored.
+- Input accepts hexadecimal bytes separated by spaces, or the same four bytes as one compact 8-digit token without separators; letter case is ignored.
 - Validation for malformed hex, incorrect byte count, unexpected response service, and unexpected PID.
 - Display decoded RPM and the accepted response bytes.
 - Unit tests, browser-level smoke testing, automated CI, and repeatable AWS deployment.
@@ -57,7 +57,7 @@ This brief includes only the minimum identifiers and calculation needed for the 
 |---|---|---|
 | FR-01 | The application shall present a clearly labeled field for a Mode 01 PID 0C response and a Decode action. | The page identifies the expected input as four hexadecimal bytes and provides an operable Decode button. |
 | FR-02 | The application shall accept four space-separated hexadecimal bytes, with either letter case. | `41 0C 1A F8` and `41 0c 1a f8` are accepted. |
-| FR-03 | The application shall reject empty input, malformed bytes, and any input not containing exactly four bytes. | No result is shown; a concise, actionable error is displayed. Examples: empty input, `41 0C 1G F8`, `41 0C F8`, and `41 0C 1A F8 00`. |
+| FR-03 | The application shall reject empty input, malformed bytes, and any input not containing exactly four bytes (the compact form in FR-11 counts as four bytes). | No result is shown; a concise, actionable error is displayed. Examples: empty input, `41 0C 1G F8`, `41 0C F8`, and `41 0C 1A F8 00`. |
 | FR-04 | The application shall confirm that the response service is `41`. | A syntactically valid response with another service is rejected with a service-specific message. |
 | FR-05 | The application shall confirm that the response PID is `0C`. | A syntactically valid response for another PID is rejected with a PID-specific message. |
 | FR-06 | The application shall decode bytes A and B using the formula in Section 4. | `41 0C 1A F8` returns 1726 RPM; `41 0C 00 01` returns 0.25 RPM; `41 0C FF FF` returns 16,383.75 RPM. |
@@ -65,6 +65,7 @@ This brief includes only the minimum identifiers and calculation needed for the 
 | FR-08 | A new decode attempt shall replace the previous result or error. | After a valid decode, entering invalid input and decoding does not leave the old RPM presented as the current result. |
 | FR-09 | The application shall be usable by keyboard and expose input labels and result/error state to assistive technology. | The input has a programmatic label; controls are keyboard-operable; status messages are announced using an appropriate live region. |
 | FR-10 | The application shall work without network access after the page assets have loaded. | The decoder executes entirely in the browser and sends no response bytes to a server. |
+| FR-11 | The application shall also accept the four response bytes entered as a single 8-character hexadecimal token with no separators, with either letter case, and shall treat the result exactly as the spaced form. | `410C1AF8` and `410c1af8` return 1726 rpm with accepted response `41 0C 1A F8`. A single token that is not exactly 8 characters (for example `410C1A` or `410C1AF800`) is rejected as a wrong byte count. An 8-character token with a non-hexadecimal character (for example `410C1AG8`) is rejected as an invalid byte. Mixed grouping such as `410C 1AF8` is not accepted and is rejected as a wrong byte count. |
 
 ## 6. Quality requirements
 
@@ -124,6 +125,17 @@ As a keyboard or screen-reader user, I want to enter a response and receive anno
 - When I tab to the input, enter a valid response, and activate Decode from the keyboard
 - Then the RPM result is visible and its status is programmatically announced
 
+### US-05: Paste a response without spaces
+
+As a learner, I want to paste a response exactly as it appears in a log or capture without inserting spaces, so that I do not have to reformat it by hand.
+
+**Scenario:** Compact response
+
+- Given the application is loaded
+- When I enter `410C1AF8` and activate Decode
+- Then the application displays `1,726 rpm`
+- And it identifies the accepted response as `41 0C 1A F8`
+
 ## 8. Error behavior
 
 Errors should explain the corrective action in plain language. Do not display a stack trace or silently coerce malformed input.
@@ -136,7 +148,7 @@ Errors should explain the corrective action in plain language. Do not display a 
 | Wrong service | This is not a positive response for Mode 01; expected service 41. |
 | Wrong PID | This response is for a different PID; expected 0C (engine speed). |
 
-The validation order should be deterministic: trim and split input; check byte count; validate byte syntax; normalize case; validate service; validate PID; decode. Clear stale result/error state at the start of each attempt.
+The validation order should be deterministic: trim and split input; expand a single 8-character token into four two-character bytes (FR-11); check byte count; validate byte syntax; normalize case; validate service; validate PID; decode. Clear stale result/error state at the start of each attempt.
 
 ## 9. Proposed design and implementation constraints
 
@@ -195,6 +207,10 @@ At minimum, test:
 8. A malformed byte is rejected.
 9. A response service other than `41` is rejected.
 10. A PID other than `0C` is rejected.
+11. The compact form `410C1AF8` decodes to 1726 and is normalized to `41 0C 1A F8`.
+12. A compact token of the wrong length (6, 7, 9, or 10 characters) is rejected as a wrong byte count.
+13. An 8-character compact token containing a non-hexadecimal character is rejected as an invalid byte.
+14. Mixed grouping such as `410C 1AF8` is rejected as a wrong byte count.
 
 ### UI and deployment checks
 

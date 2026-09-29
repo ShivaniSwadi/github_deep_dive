@@ -16,27 +16,27 @@ Keep changes aligned with the requirements in `docs/j1979-pid-mvp-training-requi
 - Node built-in `node:test` and `node:assert/strict` for unit tests.
 - Python 3 may be used as a local static file server; it is not an application dependency.
 - AWS CloudFormation provisions a private S3 static origin and CloudFront distribution with Origin Access Control (OAC).
-- GitHub Actions runs tests and deploys from `main` using GitHub OIDC. The workflow currently uses `actions/checkout@v4`, `actions/setup-node@v4`, and `aws-actions/configure-aws-credentials@v4`.
+- GitHub Actions (`.github/workflows/ci.yml`) runs syntax checks and unit tests only (CI). Deployment (CD) is deferred. The workflow uses `actions/checkout@v4`, `actions/setup-node@v4`, and `actions/upload-artifact@v4`.
 
 ## Architecture
 
 Use the **functional core / imperative shell** pattern:
 
-- `src/decoder.js` owns input validation and PID 0C decoding. Keep it pure: no DOM, network, storage, or logging.
+- `src/decoder.js` owns input validation, PID 0C decoding, and number formatting (`formatRpm`, `display`). Keep it pure: no DOM, network, storage, or logging.
 - `src/app.js` owns form events and renders decoder results into the page.
 - `index.html` defines semantic content and accessible controls; `src/styles.css` owns presentation.
 - `test/decoder.test.js` tests the decoder independently of the browser UI.
 - Keep infrastructure and CI/CD configuration outside the browser runtime.
 - Do not add a generic decoder registry, strategy abstraction, backend, or framework for the single-PID MVP. Reconsider only when a concrete requirement needs it.
 
-Expected input errors are normal outcomes: return a structured result with `ok: false`, a stable `code`, and a user-facing `message`. Do not throw exceptions for ordinary invalid user input. Successful results return `ok: true`, normalized response bytes, and the unrounded numeric RPM value.
+Expected input errors are normal outcomes: return a structured result with `ok: false`, a stable `code`, and a user-facing `message`. Do not throw exceptions for ordinary invalid user input. Successful results return `ok: true`, `bytes`, `normalized` response text, the unrounded numeric `rpm`, and the formatted `display` string. Input may be four space-separated bytes or one compact 8-character token (`410C1AF8`); both give the same result (FR-11).
 
 ## Language And Coding Standards
 
 - Use JavaScript ES modules with named exports and imports.
 - Match existing JavaScript style: two-space indentation, double-quoted strings, semicolons, `const` by default, and descriptive `camelCase` identifiers.
 - Keep decoder logic small and deterministic. Preserve quarter-RPM precision; do not round the domain result.
-- Keep UI formatting in the UI layer. Use `textContent` for user-visible response and status text; do not inject entered values as HTML.
+- Keep number formatting in the decoder (`formatRpm`), as designed in `docs/swdd.md`. In the UI, use `textContent` for user-visible response and status text; do not inject entered values as HTML.
 - Use semantic HTML, associated labels, keyboard-operable controls, visible focus, and an announced status for results and errors.
 - Preserve responsive behavior and the reduced-motion preference. Use the existing CSS custom properties and class-based style conventions.
 - Prefer platform APIs and the existing dependency-free setup. Add a package only when a requirement justifies its maintenance and security cost.
@@ -44,7 +44,7 @@ Expected input errors are normal outcomes: return a structured result with `ok: 
 
 ## Tests
 
-Add decoder tests to `test/decoder.test.js` using Node's built-in test runner. Cover the standard response, fractional RPM, minimum/maximum values, whitespace and letter-case handling, malformed and incorrect byte counts, unexpected service, and unexpected PID.
+Add decoder tests to `test/decoder.test.js` using Node's built-in test runner. Cover the standard response, fractional RPM, minimum/maximum values, whitespace and letter-case handling, the compact form without spaces, malformed and incorrect byte counts, unexpected service, and unexpected PID. The test design is `docs/ut.md`; keep test IDs, `docs/ut-testcases.csv`, and the tests in step.
 
 Example:
 
@@ -67,6 +67,7 @@ npm test
 node --check src/decoder.js
 node --check src/app.js
 node --check test/decoder.test.js
+node --check tools/ut-csv-reporter.js
 python -m http.server 8000
 ```
 
@@ -81,7 +82,10 @@ The static server command is for local browser smoke testing; stop it when finis
 |       |-- ci.yml
 |       `-- copilot-instructions.md
 |-- docs/
-|   `-- j1979-pid-mvp-training-requirements.md
+|   |-- j1979-pid-mvp-training-requirements.md
+|   |-- swdd.md
+|   |-- ut.md
+|   `-- ut-testcases.csv
 |-- infra/
 |   `-- site.yaml
 |-- src/
@@ -92,7 +96,7 @@ The static server command is for local browser smoke testing; stop it when finis
 |   `-- decoder.test.js
 |-- tools/
 |   `-- ut-csv-reporter.js
-|-- reports/            (generated by npm test: ut-report.csv)
+|-- reports/            (generated by npm test, not tracked: ut-report.csv)
 |-- index.html
 |-- package.json
 `-- README.md
@@ -103,7 +107,7 @@ The static server command is for local browser smoke testing; stop it when finis
 - Use synthetic response bytes only. Never request, store, transmit, or log real vehicle data or entered response values.
 - Keep the decoder in the browser; do not add analytics, telemetry, persistence, or a backend without an approved requirement.
 - Never commit AWS credentials, tokens, private keys, or other secrets. Do not paste secrets into Copilot prompts or source files.
-- Deployment must use GitHub OIDC and a narrowly scoped IAM role. Keep the role trust restricted to the intended repository and `main` branch; use repository Actions variables such as `AWS_ROLE_ARN` and `AWS_REGION`, not long-lived AWS access-key secrets.
+- Deployment (deferred) must use GitHub OIDC and a narrowly scoped IAM role. Keep the role trust restricted to the intended repository and `main` branch; use repository Actions variables such as `AWS_ROLE_ARN` and `AWS_REGION`, not long-lived AWS access-key secrets.
 - Keep the S3 bucket private with public access blocked. CloudFront must access the origin through OAC and serve viewers over HTTPS.
 - Review changes to workflow permissions, IAM trust, CloudFormation resources, and deployment scope before merging.
 - Treat this project as a learning aid, not a certified diagnostic or safety tool. Confirm standards licensing and interpretation against an authorized reference.

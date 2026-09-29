@@ -69,7 +69,9 @@ const errorVectors = [
   ["UT-24", "41 0C F8", "WRONG_BYTE_COUNT"],
   ["UT-25", "41 0C 1A F8 00", "WRONG_BYTE_COUNT"],
   ["UT-26", "41 0C 1A F8 41 0C 1A F8", "WRONG_BYTE_COUNT"],
-  ["UT-27", "410C1AF8", "WRONG_BYTE_COUNT"],
+  ["UT-27", "410C 1AF8", "WRONG_BYTE_COUNT"],
+  ["UT-27", "41 0C1AF8", "WRONG_BYTE_COUNT"],
+  ["UT-27", "410C1AF8 00", "WRONG_BYTE_COUNT"],
   ["UT-28", "41,0C,1A,F8", "WRONG_BYTE_COUNT"],
   ["UT-29", "41 0C 1G F8", "INVALID_BYTE"],
   ["UT-30", "41 0C 1 F8", "INVALID_BYTE"],
@@ -79,6 +81,7 @@ const errorVectors = [
   ["UT-34", "41 0C +1 F8", "INVALID_BYTE"],
   ["UT-35", "41 0C 1. F8", "INVALID_BYTE"],
   ["UT-36", "\uFF14\uFF11 0C 1A F8", "INVALID_BYTE"],
+  ["UT-61", "41 0C \uFB00 F8", "INVALID_BYTE"],
   ["UT-37", "42 0C 1A F8", "WRONG_SERVICE"],
   ["UT-38", "01 0C 1A F8", "WRONG_SERVICE"],
   ["UT-39", "7F 0C 1A F8", "WRONG_SERVICE"],
@@ -89,21 +92,55 @@ const errorVectors = [
   ["UT-44", "ZZ 0C 1A F8", "INVALID_BYTE"],
   ["UT-45", "42 0C 1G F8", "INVALID_BYTE"],
   ["UT-46", "41 0D 1G F8", "INVALID_BYTE"],
-  ["UT-47", "42 0D 1A F8", "WRONG_SERVICE"]
+  ["UT-47", "42 0D 1A F8", "WRONG_SERVICE"],
+  ["UT-66", "410C1A", "WRONG_BYTE_COUNT"],
+  ["UT-66", "410C1AF", "WRONG_BYTE_COUNT"],
+  ["UT-66", "410C1AF80", "WRONG_BYTE_COUNT"],
+  ["UT-66", "410C1AF800", "WRONG_BYTE_COUNT"],
+  ["UT-67", "410C1AG8", "INVALID_BYTE"],
+  ["UT-67", "0x410C1A", "INVALID_BYTE"],
+  ["UT-67", "410C1A.8", "INVALID_BYTE"],
+  ["UT-67", "\uFF14\uFF110C1AF8", "INVALID_BYTE"],
+  ["UT-68", "420C1AF8", "WRONG_SERVICE"],
+  ["UT-68", "010C1AF8", "WRONG_SERVICE"],
+  ["UT-69", "410D1AF8", "WRONG_PID"],
+  ["UT-69", "41001AF8", "WRONG_PID"],
+  ["UT-70", "420D1AF8", "WRONG_SERVICE"],
+  ["UT-70", "410D1AG8", "INVALID_BYTE"]
+];
+
+// [id, input, expected rpm]; compact form (FR-11), always normalized to the reference spacing.
+const compactBoundaryVectors = [
+  ["UT-65", "410C0000", 0],
+  ["UT-65", "410C0001", 0.25],
+  ["UT-65", "410C00FF", 63.75],
+  ["UT-65", "410C8000", 8192],
+  ["UT-65", "410CFFFF", 16383.75]
+];
+
+// [id, input]; every row must decode to the reference result.
+const compactReferenceVectors = [
+  ["UT-62", "410C1AF8"],
+  ["UT-63", "410c1af8"],
+  ["UT-63", "410C1af8"],
+  ["UT-64", "  410C1AF8  "],
+  ["UT-64", "410C1AF8\r\n"],
+  ["UT-64", "\t410C1AF8"]
 ];
 
 const errorVectorGroups = [
   ["Empty input", "UT-19", "UT-21"],
   ["Byte count", "UT-22", "UT-28"],
-  ["Byte syntax", "UT-29", "UT-36"],
+  ["Byte syntax", "UT-29", "UT-61"],
   ["Service", "UT-37", "UT-39"],
   ["PID", "UT-40", "UT-42"],
-  ["Check order", "UT-43", "UT-47"]
+  ["Check order", "UT-43", "UT-47"],
+  ["Compact form errors", "UT-66", "UT-70"]
 ];
 
 function vectorsInRange(first, last) {
   const ids = errorVectors.map(([id]) => id);
-  return errorVectors.slice(ids.indexOf(first), ids.indexOf(last) + 1);
+  return errorVectors.slice(ids.indexOf(first), ids.lastIndexOf(last) + 1);
 }
 
 describe("Valid responses", () => {
@@ -146,6 +183,41 @@ describe("Whitespace", () => {
       expectReference(input);
     });
   }
+});
+
+describe("Compact input form", () => {
+  test("UT-62 decodes the compact reference response", () => {
+    const result = decodeRpmResponse("410C1AF8");
+    assert.equal(result.ok, true);
+    assert.equal(result.rpm, 1726);
+    assert.deepEqual(result.bytes, [0x41, 0x0c, 0x1a, 0xf8]);
+    assert.equal(result.normalized, REFERENCE_INPUT);
+    assert.equal(result.display, "1,726 rpm");
+  });
+
+  for (const [id, input] of compactReferenceVectors.slice(1)) {
+    test(`${id} accepts ${JSON.stringify(input)} as the reference response`, () => {
+      expectReference(input);
+    });
+  }
+
+  for (const [id, input, rpm] of compactBoundaryVectors) {
+    test(`${id} decodes ${input} to ${rpm} rpm`, () => {
+      const result = decodeRpmResponse(input);
+      assert.equal(result.ok, true);
+      assert.equal(result.rpm, rpm);
+    });
+  }
+
+  test("UT-71 compact and spaced forms give equal results for every A and B", () => {
+    for (let a = 0; a <= 255; a += 1) {
+      for (let b = 0; b <= 255; b += 1) {
+        const compact = `410C${hex(a)}${hex(b)}`;
+        const spaced = `41 0C ${hex(a)} ${hex(b)}`;
+        assert.deepEqual(decodeRpmResponse(compact), decodeRpmResponse(spaced), compact);
+      }
+    }
+  });
 });
 
 for (const [suite, first, last] of errorVectorGroups) {
@@ -310,7 +382,7 @@ describe("Exhaustive and static checks", () => {
       "utf8"
     )
       .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+      .replace(/(^|\s)\/\/.*$/gm, "$1");
 
     const forbidden = [
       "document",

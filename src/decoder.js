@@ -1,6 +1,7 @@
 const EXPECTED_SERVICE = 0x41;
 const EXPECTED_PID = 0x0c;
 const EXPECTED_BYTE_COUNT = 4;
+const COMPACT_LENGTH = EXPECTED_BYTE_COUNT * 2;
 // Tested before upper-casing so characters that expand under case mapping are not accepted.
 const BYTE_PATTERN = /^[0-9A-Fa-f]{2}$/;
 
@@ -29,13 +30,21 @@ export function formatRpm(rpm) {
   return `${rpmFormat.format(rpm)} rpm`;
 }
 
+function splitBytes(text) {
+  const tokens = text.split(/\s+/);
+  if (tokens.length === 1 && tokens[0].length === COMPACT_LENGTH) {
+    return Array.from({ length: EXPECTED_BYTE_COUNT }, (_, i) => tokens[0].slice(i * 2, i * 2 + 2));
+  }
+  return tokens;
+}
+
 export function decodeRpmResponse(input) {
   const text = typeof input === "string" ? input.trim() : "";
   if (text === "") {
     return failure("EMPTY");
   }
 
-  const tokens = text.split(/\s+/);
+  const tokens = splitBytes(text);
   if (tokens.length !== EXPECTED_BYTE_COUNT) {
     return failure("WRONG_BYTE_COUNT");
   }
